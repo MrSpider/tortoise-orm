@@ -51,7 +51,7 @@ from tortoise.manager import Manager
 from tortoise.queryset import ExistsQuery, Q, QuerySet, QuerySetSingle
 from tortoise.router import router
 from tortoise.signals import Signals
-from tortoise.transactions import current_transaction_map, in_transaction
+from tortoise.transactions import get_connection, in_transaction
 
 MODEL = TypeVar("MODEL", bound="Model")
 EMPTY = object()
@@ -271,7 +271,7 @@ class MetaInfo:
     @property
     def db(self) -> BaseDBAsyncClient:
         try:
-            return current_transaction_map[self.default_connection].get()
+            return get_connection(self.default_connection)
         except KeyError:
             raise ConfigurationError("No DB associated to model")
 

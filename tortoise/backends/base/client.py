@@ -7,7 +7,7 @@ from pypika import Query
 from tortoise.backends.base.executor import BaseExecutor
 from tortoise.backends.base.schema_generator import BaseSchemaGenerator
 from tortoise.exceptions import TransactionManagementError
-from tortoise.transactions import current_transaction_map
+from tortoise.transactions import push_transaction, pop_transaction
 
 
 class Capabilities:
@@ -227,8 +227,7 @@ class TransactionContext:
 
     async def __aenter__(self):
         await self.lock.acquire()
-        current_transaction = current_transaction_map[self.connection_name]
-        self.token = current_transaction.set(self.connection)
+        push_transaction(self.connection_name, self.connection)
         await self.connection.start()
         return self.connection
 
@@ -240,7 +239,7 @@ class TransactionContext:
                     await self.connection.rollback()
             else:
                 await self.connection.commit()
-        current_transaction_map[self.connection_name].reset(self.token)
+        pop_transaction(self.connection_name)
         self.lock.release()
 
 
@@ -248,8 +247,7 @@ class TransactionContextPooled(TransactionContext):
     __slots__ = ("connection", "connection_name", "token")
 
     async def __aenter__(self):
-        current_transaction = current_transaction_map[self.connection_name]
-        self.token = current_transaction.set(self.connection)
+        push_transaction(self.connection_name, self.connection)
         self.connection._connection = await self.connection._parent._pool.acquire()
         await self.connection.start()
         return self.connection
@@ -262,7 +260,7 @@ class TransactionContextPooled(TransactionContext):
                     await self.connection.rollback()
             else:
                 await self.connection.commit()
-        current_transaction_map[self.connection_name].reset(self.token)
+        pop_transaction(self.connection_name)
         if self.connection._parent._pool:
             await self.connection._parent._pool.release(self.connection._connection)
 

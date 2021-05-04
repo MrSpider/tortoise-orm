@@ -19,8 +19,11 @@ class TestConcurrencyIsolated(test.IsolatedTestCase):
         self.assertEqual(set(all_write), set(all_read))
 
     async def create_trans_concurrent(self):
-        async with in_transaction():
-            await asyncio.gather(*[Tournament.create(name="Test") for _ in range(100)])
+        async with in_transaction() as connection:
+            await asyncio.gather(*[
+                Tournament.create(name="Test", using_db=connection)
+                for _ in range(100)
+            ])
 
     async def test_nonconcurrent_get_or_create(self):
         unas = [await UniqueName.get_or_create(name="c") for _ in range(10)]

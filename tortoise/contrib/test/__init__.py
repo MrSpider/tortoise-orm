@@ -15,7 +15,7 @@ from asynctest.case import _Policy
 from tortoise import Model, Tortoise
 from tortoise.backends.base.config_generator import generate_config as _generate_config
 from tortoise.exceptions import DBConnectionError
-from tortoise.transactions import current_transaction_map
+from tortoise.transactions import pop_transaction, push_transaction
 
 __all__ = (
     "SimpleTestCase",
@@ -47,7 +47,6 @@ _CONNECTIONS: dict = {}
 _SELECTOR = None
 _LOOP: AbstractEventLoop = None  # type: ignore
 _MODULES: Iterable[Union[str, ModuleType]] = []
-_CONN_MAP: dict = {}
 
 
 def getDBConfig(app_label: str, modules: Iterable[Union[str, ModuleType]]) -> dict:
@@ -79,7 +78,6 @@ async def _init_db(config: dict) -> None:
 def _restore_default() -> None:
     Tortoise.apps = {}
     Tortoise._connections = _CONNECTIONS.copy()
-    current_transaction_map.update(_CONN_MAP)
     Tortoise._init_apps(_CONFIG["apps"])
     Tortoise._inited = True
 
@@ -105,7 +103,6 @@ def initializer(
     global _LOOP
     global _TORTOISE_TEST_DB
     global _MODULES
-    global _CONN_MAP
     _MODULES = modules
     if db_url is not None:  # pragma: nobranch
         _TORTOISE_TEST_DB = db_url
@@ -116,7 +113,6 @@ def initializer(
     _SELECTOR = loop._selector  # type: ignore
     loop.run_until_complete(_init_db(_CONFIG))
     _CONNECTIONS = Tortoise._connections.copy()
-    _CONN_MAP = current_transaction_map.copy()
     Tortoise.apps = {}
     Tortoise._connections = {}
     Tortoise._inited = False
@@ -372,8 +368,7 @@ class TransactionTestContext:
         self.connection_name = connection.connection_name
 
     async def __aenter__(self):
-        current_transaction = current_transaction_map[self.connection_name]
-        self.token = current_transaction.set(self.connection)
+        push_transaction(self.connection_name, self.connection)
         if hasattr(self.connection, "_parent"):
             self.connection._connection = await self.connection._parent._pool.acquire()
         await self.connection.start()
@@ -383,7 +378,7 @@ class TransactionTestContext:
         await self.connection.rollback()
         if hasattr(self.connection, "_parent"):
             await self.connection._parent._pool.release(self.connection._connection)
-        current_transaction_map[self.connection_name].reset(self.token)
+        pop_transaction(self.connection_name)
 
 
 class TestCase(TruncationTestCase):

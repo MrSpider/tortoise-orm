@@ -389,7 +389,6 @@ class Tortoise:
                 await connection.db_create()
             await connection.create_connection(with_db=True)
             cls._connections[name] = connection
-            current_transaction_map[name] = ContextVar(name, default=connection)
 
     @classmethod
     def init_models(
